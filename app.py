@@ -49,7 +49,7 @@ default_selected_features = [col for col in cols_to_check if col in numeric_cols
 
 app.layout = html.Div(
   [
-    html.H1("Board Game Data Correlation Heatmap"),
+    html.H1("Board Game Data Visualization"),
     html.Div(
       [
         html.Label("Select Features to Display:"),
@@ -65,8 +65,15 @@ app.layout = html.Div(
           style={'display': 'flex', 'flexWrap': 'wrap'}
         ),
         html.Br(),
-        html.Button(
-          "Toggle Between Heatmap/Pair Plot", id="toggle-button", n_clicks=0
+        html.Div(
+          [
+            html.Button("Heatmap", id="heatmap-button", n_clicks=0),
+            html.Button("Pair Plot", id="pairplot-button", n_clicks=0),
+            # html.Button("Box Plot", id="boxplot-button", n_clicks=0),
+            # html.Button("Count Plot", id="countplot-button", n_clicks=0),
+            # html.Button("Histogram", id="histogram-button", n_clicks=0),
+          ],
+          style={"margin": "10px"}
         ),
       ],
       style={"margin": "10px"},
@@ -178,17 +185,41 @@ def empty_fig(message):
 
 
 @app.callback(
-    Output("graph-state-store", "data"),
-    Input("toggle-button", "n_clicks"),
-    State("graph-state-store", "data"),
-    prevent_initial_call=True,  # Don't run this on page load
+  Output("graph-state-store", "data"),
+  Input("heatmap-button", "n_clicks_timestamp"),
+  Input("pairplot-button", "n_clicks_timestamp"),
+  # Input("boxplot-button", "n_clicks_timestamp"),
+  # Input("countplot-button", "n_clicks_timestamp"),
+  # Input("histogram-button", "n_clicks_timestamp"),
+  State("graph-state-store", "data"),
+  prevent_initial_call=True,
 )
-def update_graph_state(n_clicks, current_state):
-    # If the button is clicked, toggle the state
-    if current_state == "pairplot":
-        return "heatmap"
-    else:
-        return "pairplot"
+def update_graph_state(
+  heatmap_ts,
+  pairplot_ts,
+  # boxplot_ts,
+  # countplot_ts,
+  # histogram_ts,
+  current_state,
+):
+  # Map button keys to their last-click timestamps
+  ts_map = {
+    "heatmap": heatmap_ts,
+    "pairplot": pairplot_ts,
+    # "boxplot": boxplot_ts,
+    # "countplot": countplot_ts,
+    # "histogram": histogram_ts,
+  }
+
+  # Keep only buttons that have been clicked (timestamp not None)
+  clicked = {k: v for k, v in ts_map.items() if v is not None}
+  if not clicked:
+    # no clicks to handle, keep current state
+    return current_state
+
+  # Return the state corresponding to the most recently clicked button
+  most_recent = max(clicked.items(), key=lambda kv: kv[1])[0]
+  return most_recent
 
 
 # build Inputs list dynamically to match the numbered checklist ids
