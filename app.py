@@ -37,31 +37,43 @@ df_clean = df.dropna(subset=cols_to_check)
 
 # DASH APP
 app = Dash(__name__)
+
+# Get all numeric columns from the dataframe
+numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+# Split columns into groups of 5
+col_groups = [numeric_cols[i:i + 5] for i in range(0, len(numeric_cols), 5)]
+
+# Define default selected features based on cols_to_check
+default_selected_features = [col for col in cols_to_check if col in numeric_cols]
+
 app.layout = html.Div(
-    [
-        html.H1("Board Game Data Correlation Heatmap"),
+  [
+    html.H1("Board Game Data Correlation Heatmap"),
+    html.Div(
+      [
+        html.Label("Select Features to Display:"),
         html.Div(
-            [
-                html.Label("Select Features to Display:"),
-                dcc.Dropdown(
-                    id="feature-checklist",
-                    options=[{"label": col, "value": col} for col in cols_to_check],
-                    value=cols_to_check,  # All features selected by default
-                    multi=True,
-                    placeholder="Select one or more features",
-                    clearable=False,
-                    style={"minWidth": "300px"},
-                ),
-                html.Br(),
-                html.Button(
-                    "Toggle Between Heatmap/Pair Plot", id="toggle-button", n_clicks=0
-                ),
-            ],
-            style={"margin": "10px"},
+          [
+            dcc.Checklist(
+              id=f"feature-checklist-{i}",
+              options=[{"label": col, "value": col} for col in group],
+              value=[col for col in group if col in default_selected_features],  # Default selected features
+              style={'display': 'inline-block', 'margin-right': '50px'}
+            ) for i, group in enumerate(col_groups)
+          ],
+          style={'display': 'flex', 'flexWrap': 'wrap'}
         ),
-        dcc.Store(id="graph-state-store", data="heatmap"),  # Initial state is 'heatmap'
-        dcc.Graph(id="graph-container"),
-    ]
+        html.Br(),
+        html.Button(
+          "Toggle Between Heatmap/Pair Plot", id="toggle-button", n_clicks=0
+        ),
+      ],
+      style={"margin": "10px"},
+    ),
+    dcc.Store(id="graph-state-store", data="heatmap"),  # Initial state is 'heatmap'
+    dcc.Graph(id="graph-container"),
+  ]
 )
 
 # Helper functions to build figures dynamically from selected features
@@ -179,24 +191,34 @@ def update_graph_state(n_clicks, current_state):
         return "pairplot"
 
 
+# build Inputs list dynamically to match the numbered checklist ids
+_inputs = [Input("graph-state-store", "data")] + [
+  Input(f"feature-checklist-{i}", "value") for i in range(len(col_groups))
+]
+
 @app.callback(
-    Output("graph-container", "figure"),
-    Input("graph-state-store", "data"),
-    Input("feature-checklist", "value"),
+  Output("graph-container", "figure"),
+  *_inputs,
 )
-def update_graph_figure(graph_state, selected_features):
-    # Ensure selected_features is a list
-    if not selected_features:
-        return empty_fig("Please select at least one feature.")
-    # Pair plot requires at least 2 features to be meaningful
-    if graph_state == "pairplot":
-        if len(selected_features) < 2:
-            return empty_fig("Select at least two features for the pair plot.")
-        return make_pairplot(df_clean, selected_features)
-    else:  # heatmap
-        if len(selected_features) < 2:
-            return empty_fig("Select at least two features for the heatmap.")
-        return make_heatmap(df_clean, selected_features)
+def update_graph_figure(graph_state, *checklist_values):
+  # flatten and dedupe selected features while preserving order
+  selected_features = []
+  for val in checklist_values:
+    if val:
+      selected_features.extend(val)
+  selected_features = list(dict.fromkeys(selected_features))
+
+  if not selected_features:
+    return empty_fig("Please select at least one feature.")
+
+  if graph_state == "pairplot":
+    if len(selected_features) < 2:
+      return empty_fig("Select at least two features for the pair plot.")
+    return make_pairplot(df_clean, selected_features)
+  else:  # heatmap
+    if len(selected_features) < 2:
+      return empty_fig("Select at least two features for the heatmap.")
+    return make_heatmap(df_clean, selected_features)
 
 
 if __name__ == "__main__":
