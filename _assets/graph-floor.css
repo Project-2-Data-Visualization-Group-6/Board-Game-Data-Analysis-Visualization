@@ -1,0 +1,10 @@
+/* Safe, minimal rules */
+#graph-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+#graph-container {
+  min-width: 1100px;
+  min-height: 800px;
+}
