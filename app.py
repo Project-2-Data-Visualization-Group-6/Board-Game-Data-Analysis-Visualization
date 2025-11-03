@@ -91,7 +91,12 @@ def make_pairplot(df, features):
     return empty_fig("Select at least two features for the pair plot.")
 
   CELL_PX = 260            # pixel size for each small subplot (keep cells consistent)
-  GAP_FRAC = 0.03          # spacing between cells (fraction, not pixels)
+  if n < 6:
+    GAP_FRAC = 0.03         # spacing between subplots (fraction of cell size)
+  elif n < 10:
+    GAP_FRAC = 0.02         # tighter spacing for larger n
+  else:
+    GAP_FRAC = 0.01
   MARGINS = dict(l=70, r=40, t=70, b=60)  # padding to avoid clipping
 
   # overall figure grows with n, while each cell remains CELL_PX
