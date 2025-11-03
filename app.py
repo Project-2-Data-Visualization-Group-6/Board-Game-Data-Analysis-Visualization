@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from dash import Dash, html, dcc, Input, Output, State
+from dash import Dash, html, dcc, Input, Output, State, dash, callback_context
 from plotly.subplots import make_subplots
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
@@ -54,6 +54,18 @@ app.layout = html.Div(
                     style={"minWidth": "300px"},
                 ),
                 html.Br(),
+                html.Label("Select Board Games to Include:"),
+                dcc.Checklist(
+                    id="game-filter",
+                    options=[{"label": game, "value": game} for game in sorted(df_clean["boardgame"].unique())],
+                    value=list(df_clean["boardgame"].unique()),
+                    style={"maxHeight": "200px", "overflowY": "auto", "border": "1px solid #ccc", "padding": "10px"},
+                ),
+                html.Div([
+                    html.Button("Select All Games", id="select-all-games", n_clicks=0, style={"marginRight": "10px"}),
+                    html.Button("Deselect All Games", id="deselect-all-games", n_clicks=0),
+                ], style={"marginTop": "5px"}),
+                html.Br(),
                 html.Button(
                     "Toggle Graph Type", id="toggle-button", n_clicks=0
                 ),
@@ -63,7 +75,7 @@ app.layout = html.Div(
             ],
             style={"margin": "10px"},
         ),
-        dcc.Store(id="graph-state-store", data="heatmap"),  # Start with heatmap
+        dcc.Store(id="graph-state-store", data="heatmap"),
         dcc.Graph(id="graph-container"),
     ]
 )
@@ -104,7 +116,7 @@ def make_pairplot(df, features):
                 # Create custom hover text with game names
                 hover_text = [
                     f"{game}<br>{x_col}: {x_val}<br>{y_col}: {y_val}"
-                    for game, x_val, y_val in zip(df['boardgame'], df[x_col], df[y_col])
+                    for game, x_val, y_val in zip(df["boardgame"], df[x_col], df[y_col])
                 ]
                 
                 fig.add_trace(
@@ -164,19 +176,17 @@ def make_prediction_plot(df, features):
     if len(features) < 1:
         return empty_fig("Select at least one feature (excluding avg_rating) for prediction.")
 
-    # Include boardgame column in the dataframe for splitting
     cols_needed = features + [target]
-    if 'boardgame' in df.columns:
-        cols_needed = ['boardgame'] + cols_needed
+    if "boardgame" in df.columns:
+        cols_needed = ["boardgame"] + cols_needed
     
     df_model = df[cols_needed].dropna()
     
     X = df_model[features]
     y = df_model[target]
     
-    # Split with game names if available
-    if 'boardgame' in df_model.columns:
-        game_names = df_model['boardgame']
+    if "boardgame" in df_model.columns:
+        game_names = df_model["boardgame"]
         X_train, X_test, y_train, y_test, _, game_names_test = train_test_split(
             X, y, game_names, test_size=0.2, random_state=42
         )
@@ -194,7 +204,6 @@ def make_prediction_plot(df, features):
 
     fig = go.Figure()
     
-    # Create hover text with game names
     if game_names_test is not None:
         hover_text = [
             f"{game}<br>Actual: {actual:.2f}<br>Predicted: {pred:.2f}"
@@ -271,27 +280,60 @@ def update_graph_state(n_clicks, current_state):
 
 
 @app.callback(
+    Output("game-filter", "value"),
+    Input("select-all-games", "n_clicks"),
+    Input("deselect-all-games", "n_clicks"),
+    State("game-filter", "options"),
+    prevent_initial_call=True,
+)
+def update_game_selection(select_all_clicks, deselect_all_clicks, all_options):
+    ctx = callback_context
+    if not ctx.triggered:
+        return dash.no_update
+    
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    if button_id == "select-all-games":
+        return [option["value"] for option in all_options]
+    elif button_id == "deselect-all-games":
+        return []
+    
+    return dash.no_update
+
+
+@app.callback(
     Output("graph-container", "figure"),
     Input("graph-state-store", "data"),
     Input("feature-checklist", "value"),
+    Input("game-filter", "value"),
 )
-def update_graph_figure(graph_state, selected_features):
-    # Ensure selected_features is a list
+def update_graph_figure(graph_state, selected_features, selected_games):
     if not selected_features:
         return empty_fig("Please select at least one feature.")
-    # Pair plot requires at least 2 features to be meaningful
+    
+    if not selected_games:
+        return empty_fig("Please select at least 3 board games.")
+    
+    if len(selected_games) < 3:
+        return empty_fig(f"Please select at least 3 board games. Currently selected: {len(selected_games)}")
+    
+    df_filtered = df_clean[df_clean["boardgame"].isin(selected_games)]
+    
+    if len(df_filtered) == 0:
+        return empty_fig("No data available for selected games.")
+    
     if graph_state == "pairplot":
         if len(selected_features) < 2:
             return empty_fig("Select at least two features for the pair plot.")
-        return make_pairplot(df_clean, selected_features)
+        return make_pairplot(df_filtered, selected_features)
 
     elif graph_state == "prediction":
-        return make_prediction_plot(df_clean, selected_features)
+        return make_prediction_plot(df_filtered, selected_features)
 
     else: # heatmap
         if len(selected_features) < 2:
             return empty_fig("Select at least two features for the heatmap.")
-        return make_heatmap(df_clean, selected_features)
+        return make_heatmap(df_filtered, selected_features)
 
 
 if __name__ == "__main__":
