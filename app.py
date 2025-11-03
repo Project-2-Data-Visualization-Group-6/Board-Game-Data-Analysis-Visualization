@@ -61,7 +61,7 @@ app.layout = html.Div(
             dcc.Checklist(
               id=f"feature-checklist-{i}",
               options=[{"label": col, "value": col} for col in group],
-              value=[col for col in group if col in default_selected_features],  # Default selected features
+              value=[col for col in group if col in default_selected_features],
               style={'display': 'inline-block', 'margin-right': '50px'}
             ) for i, group in enumerate(col_groups)
           ],
@@ -73,9 +73,6 @@ app.layout = html.Div(
             html.Button("Heatmap", id="heatmap-button", n_clicks=0),
             html.Button("Pair Plot", id="pairplot-button", n_clicks=0),
             html.Button("Prediction Plot", id="prediction-button", n_clicks=0),
-            # html.Button("Box Plot", id="boxplot-button", n_clicks=0),
-            # html.Button("Count Plot", id="countplot-button", n_clicks=0),
-            # html.Button("Histogram", id="histogram-button", n_clicks=0),
           ],
           style={"margin": "10px"}
         ),
@@ -90,61 +87,76 @@ app.layout = html.Div(
 # Helper functions to build figures dynamically from selected features
 def make_pairplot(df, features):
   n = len(features)
-  # create an n x n grid of subplots
+  if n < 2:
+    return empty_fig("Select at least two features for the pair plot.")
+
+  CELL_PX = 260            # pixel size for each small subplot (keep cells consistent)
+  GAP_FRAC = 0.03          # spacing between cells (fraction, not pixels)
+  MARGINS = dict(l=70, r=40, t=70, b=60)  # padding to avoid clipping
+
+  # overall figure grows with n, while each cell remains CELL_PX
+  fig_width  = n * CELL_PX + MARGINS["l"] + MARGINS["r"]
+  fig_height = n * CELL_PX + MARGINS["t"] + MARGINS["b"]
+
+  # build n x n grid
   fig = make_subplots(
     rows=n,
     cols=n,
-    horizontal_spacing=0.02,
-    vertical_spacing=0.02,
+    horizontal_spacing=GAP_FRAC,
+    vertical_spacing=GAP_FRAC,
   )
 
-  # add traces: histogram on diagonal, scatter on off-diagonals
+  # fill the grid
   for i, y_col in enumerate(features):
     for j, x_col in enumerate(features):
-      row = i + 1
-      col = j + 1
+      row, col = i + 1, j + 1
+
       if i == j:
-        # diagonal: histogram of the single feature
+        # diagonal: histogram
         fig.add_trace(
           go.Histogram(
             x=df[y_col].dropna(),
             nbinsx=30,
-            marker=dict(color="lightgrey"),
+            marker=dict(opacity=0.85),
             showlegend=False,
           ),
-          row=row,
-          col=col,
+          row=row, col=col
         )
-        # Remove y-axis and x-axis titles for diagonal plots
-        fig.update_yaxes(title_text="", row=row, col=col)
-        fig.update_xaxes(title_text="", row=row, col=col)
       else:
-        # off-diagonal: scatter of x vs y
+        # off-diagonal: scatter
         fig.add_trace(
           go.Scattergl(
             x=df[x_col].dropna(),
             y=df[y_col].dropna(),
             mode="markers",
             marker=dict(size=4, opacity=0.6),
-            showlegend=False,
             hovertemplate=f"{x_col}: %{{x}}<br>{y_col}: %{{y}}<extra></extra>",
+            showlegend=False,
           ),
-          row=row,
-          col=col,
+          row=row, col=col
         )
-        # label only outer axes to reduce clutter
-        if row == n:
-          fig.update_xaxes(title_text=x_col, row=row, col=col)
-        if col == 1:
-          fig.update_yaxes(title_text=y_col, row=row, col=col)
 
+      if row == n:
+        fig.update_xaxes(title_text=x_col, row=row, col=col)
+      if col == 1:
+        fig.update_yaxes(title_text=y_col, row=row, col=col)
+
+  # layout: grow with n; keep cells constant size
   fig.update_layout(
     title="Pair Plot of Board Game Features",
-    height=min(300 * n, 1200),
-    width=min(300 * n, 1200),
-    margin=dict(l=40, r=40, t=60, b=40),
+    autosize=False,                 # honor explicit pixels
+    width=fig_width,
+    height=fig_height,
+    margin=MARGINS,
   )
+
+  # prevent clipping and make titles readable on outer edges
+  fig.update_xaxes(automargin=True, title_standoff=6)
+  fig.update_yaxes(automargin=True, title_standoff=8)
+
   return fig
+
+
 
 # heatmap
 def make_heatmap(df, features):
