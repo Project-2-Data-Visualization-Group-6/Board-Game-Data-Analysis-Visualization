@@ -2,7 +2,7 @@
 
 install (or use requirements-plotly.txt)
 ```bash
-pip install pandas numpy plotly dash 
+pip install pandas numpy plotly dash scitkit-learn
 # using requirements instead:
 pip install -r requirements-plotly.txt
 ```
