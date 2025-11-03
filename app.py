@@ -4,6 +4,9 @@ import plotly.graph_objects as go
 import plotly.express as px
 from dash import Dash, html, dcc, Input, Output, State
 from plotly.subplots import make_subplots
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
 
 """The following section is from the original source"""
 
@@ -49,10 +52,10 @@ default_selected_features = [col for col in cols_to_check if col in numeric_cols
 
 app.layout = html.Div(
   [
-    html.H1("Board Game Data Visualization"),
+    html.H1("Board Game Data Explorer and Predictor"),
     html.Div(
       [
-        html.Label("Select Features to Display:"),
+        html.Label("Select Features for Analysis:"),
         html.Div(
           [
             dcc.Checklist(
@@ -69,6 +72,7 @@ app.layout = html.Div(
           [
             html.Button("Heatmap", id="heatmap-button", n_clicks=0),
             html.Button("Pair Plot", id="pairplot-button", n_clicks=0),
+            html.Button("Prediction Plot", id="prediction-button", n_clicks=0),
             # html.Button("Box Plot", id="boxplot-button", n_clicks=0),
             # html.Button("Count Plot", id="countplot-button", n_clicks=0),
             # html.Button("Histogram", id="histogram-button", n_clicks=0),
@@ -142,7 +146,7 @@ def make_pairplot(df, features):
   )
   return fig
 
-
+# heatmap
 def make_heatmap(df, features):
     corr_matrix = df[features].corr()
     fig = go.Figure(
@@ -162,6 +166,83 @@ def make_heatmap(df, features):
         xaxis={"side": "bottom"},
         yaxis={"side": "left"},
         height=800,
+    )
+    return fig
+  
+# Makes the prediction plot (Sal)
+def make_prediction_plot(df, features):
+    target = "avg_rating"
+    features = [f for f in features if f != target]
+    if len(features) < 1:
+        return empty_fig("Select at least one feature (excluding avg_rating) for prediction.")
+
+    # Include boardgame column in the dataframe for splitting
+    cols_needed = features + [target]
+    if 'boardgame' in df.columns:
+        cols_needed = ['boardgame'] + cols_needed
+    
+    df_model = df[cols_needed].dropna()
+    
+    X = df_model[features]
+    y = df_model[target]
+    
+    # Split with game names if available
+    if 'boardgame' in df_model.columns:
+        game_names = df_model['boardgame']
+        X_train, X_test, y_train, y_test, _, game_names_test = train_test_split(
+            X, y, game_names, test_size=0.2, random_state=42
+        )
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+        game_names_test = None
+    
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+
+    predictions = model.predict(X_test)
+    r2 = r2_score(y_test, predictions)
+
+    fig = go.Figure()
+    
+    # Create hover text with game names
+    if game_names_test is not None:
+        hover_text = [
+            f"{game}<br>Actual: {actual:.2f}<br>Predicted: {pred:.2f}"
+            for game, actual, pred in zip(game_names_test, y_test, predictions)
+        ]
+        hovertemplate = "%{text}<extra></extra>"
+    else:
+        hover_text = None
+        hovertemplate = "Actual: %{x}<br>Predicted: %{y}<extra></extra>"
+    
+    fig.add_trace(
+        go.Scatter(
+            x=y_test,
+            y=predictions,
+            mode="markers",
+            marker=dict(color="skyblue", size=6, opacity=0.6),
+            name="Predicted vs Actual",
+            text=hover_text,
+            hovertemplate=hovertemplate,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[y_test.min(), y_test.max()],
+            y=[y_test.min(), y_test.max()],
+            mode="lines",
+            line=dict(color="red", dash="dash"),
+            name="Ideal Fit",
+        )
+    )
+
+    fig.update_layout(
+        title=f"Linear Regression Prediction (R² = {r2:.3f})",
+        xaxis_title="Actual Average Rating",
+        yaxis_title="Predicted Average Rating",
+        height=700,
     )
     return fig
 
@@ -188,6 +269,7 @@ def empty_fig(message):
   Output("graph-state-store", "data"),
   Input("heatmap-button", "n_clicks_timestamp"),
   Input("pairplot-button", "n_clicks_timestamp"),
+  Input("prediction-button", "n_clicks_timestamp"),
   # Input("boxplot-button", "n_clicks_timestamp"),
   # Input("countplot-button", "n_clicks_timestamp"),
   # Input("histogram-button", "n_clicks_timestamp"),
@@ -197,6 +279,7 @@ def empty_fig(message):
 def update_graph_state(
   heatmap_ts,
   pairplot_ts,
+  prediction_ts,
   # boxplot_ts,
   # countplot_ts,
   # histogram_ts,
@@ -206,6 +289,7 @@ def update_graph_state(
   ts_map = {
     "heatmap": heatmap_ts,
     "pairplot": pairplot_ts,
+    "prediction": prediction_ts,
     # "boxplot": boxplot_ts,
     # "countplot": countplot_ts,
     # "histogram": histogram_ts,
@@ -246,6 +330,10 @@ def update_graph_figure(graph_state, *checklist_values):
     if len(selected_features) < 2:
       return empty_fig("Select at least two features for the pair plot.")
     return make_pairplot(df_clean, selected_features)
+  if graph_state == "prediction":
+    # if len(selected_features) < 2:
+    #   return empty_fig("Select at least two features for the pair plot.")
+    return make_prediction_plot(df_clean, selected_features)
   else:  # heatmap
     if len(selected_features) < 2:
       return empty_fig("Select at least two features for the heatmap.")
